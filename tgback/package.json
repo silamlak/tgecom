@@ -5,8 +5,8 @@
   "main": "index.js",
   "scripts": {
     "start": "npm run server & npm run bot",
-    "server": "node server.js",
-    "bot": "node bot.js"
+    "server": "nodemon server.js",
+    "bot": "nodemon bot.js"
   },
   "keywords": [],
   "author": "",

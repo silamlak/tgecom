@@ -16,8 +16,7 @@ const app = express();
 app.use(cors())
 app.use(express.json());
 
-const BOT_TOKEN = "2132485622:AAF4HhAJBFcPYkMaxpmIzB1LDe2sihuv9pg";
-const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
+const TELEGRAM_API = `https://api.telegram.org/bot${process.env.BOT}`;
 
 // Get all categories
 app.get("/api/categories", async (req, res) => {
@@ -32,6 +31,12 @@ app.get("/api/categories", async (req, res) => {
 // Get products by category ID
 app.get("/api/products/:categoryId", async (req, res) => {
   try {
+    console.log(req.params.categoryId);
+    if(req.params.categoryId === "all"){
+      const products = await Product.find();
+      res.json(products);
+      return;
+    }
     const products = await Product.find({ category: req.params.categoryId });
     res.json(products);
   } catch (error) {

@@ -8,7 +8,7 @@ import Order from "./model/orderModel.js";
 
 config();
 
-const bot = new Telegraf("2132485622:AAF4HhAJBFcPYkMaxpmIzB1LDe2sihuv9pg");
+const bot = new Telegraf(process.env.BOT);
 connectDB();
 const userState = {}; // To store categoryId and messageId
 
