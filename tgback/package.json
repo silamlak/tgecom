@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "concurrently \"npm run server\" \"npm run bot\"",
+    "start": "npm run server & npm run bot",
     "server": "nodemon server.js",
     "bot": "nodemon bot.js"
   },
