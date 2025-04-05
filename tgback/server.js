@@ -74,8 +74,8 @@ app.post("/api/products", async (req, res) => {
       try {
         await axios.post(`${TELEGRAM_API}/sendPhoto`, {
           chat_id: user.userId,
-          photo: imageUrl || "https://via.placeholder.com/300.png",
-          caption: `New Product Added!\nName: ${name}\nPrice: $${price}\n Description: ${description}`,
+          photo: "https://via.placeholder.com/300.png",
+          caption: `New Product Added!\nName: ${name}\nPrice: $${price}\n${description}`,
           parse_mode: "Markdown",
           reply_markup: JSON.stringify({
             inline_keyboard: [

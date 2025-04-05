@@ -1,4 +1,5 @@
 import { Telegraf, Markup } from "telegraf";
+import User from "./model/userModel.js";
 import Category from "./model/categoryModel.js";
 import Product from "./model/productModel.js";
 import Order from "./model/orderModel.js";
@@ -36,7 +37,15 @@ const removeKeyboard = (ctx, message) => {
 };
 
 // Command: /start -> Show main menu
-bot.start((ctx) => showMainMenu(ctx, "Welcome to our store!"));
+bot.start(async (ctx) => {
+  const { id, first_name } = ctx.from;
+  const alreadyRegistered = await User.findOne({ userId: id });
+  if (!alreadyRegistered) {
+    const user = new User({ userId: id, firstName: first_name });
+    await user.save();
+  }
+  showMainMenu(ctx, "Welcome to our store!");
+});
 
 // Handle category selection
 bot.hears(["Shop"], async (ctx) => {
@@ -151,7 +160,7 @@ bot.action(/^prod_(.+)/, async (ctx) => {
   try {
     const productId = ctx.match[1];
     const product = await Product.findById(productId);
-    await ctx.deleteMessage()
+    await ctx.deleteMessage();
 
     // // Delete previous messages if any
     // if (userStates[ctx.from.id]?.messageIds) {
@@ -162,18 +171,18 @@ bot.action(/^prod_(.+)/, async (ctx) => {
     const detailMsg = await ctx.replyWithPhoto(product.imageUrl, {
       caption: `🛍️ ${product.name}\n💰 ${product.price} ETB`,
     });
-   const optionsMsg = await ctx.reply(
-     "Select an option:",
-     Markup.inlineKeyboard([
-       [
-         Markup.button.callback("🛒 Add to Cart", `add_${productId}`),
-         Markup.button.callback(
-           "🔙 Back to List",
-           `back_to_products_${product.category}`
-         ),
-       ],
-     ])
-   );
+    const optionsMsg = await ctx.reply(
+      "Select an option:",
+      Markup.inlineKeyboard([
+        [
+          Markup.button.callback("🛒 Add to Cart", `add_${productId}`),
+          Markup.button.callback(
+            "🔙 Back to List",
+            `back_to_products_${product.category}`
+          ),
+        ],
+      ])
+    );
 
     // Store all message references
     userStates[ctx.from.id] = {
@@ -281,7 +290,6 @@ const deletePreviousMessages = async (ctx, messageIds = []) => {
 bot.hears(/^(\+251|0)(9|7)[0-9]{8}$/, async (ctx) => {
   if (userStates[ctx.from.id]?.action === "awaiting_phone") {
     try {
-
       const phone = ctx.match[0];
       const { productId, messageIds } = userStates[ctx.from.id]; // Store message IDs in state
       const product = await Product.findById(productId);
@@ -323,7 +331,6 @@ bot.hears(/^(\+251|0)(9|7)[0-9]{8}$/, async (ctx) => {
 bot.on("contact", async (ctx) => {
   if (userStates[ctx.from.id]?.action === "awaiting_phone") {
     try {
-
       const phone = ctx.message.contact.phone_number;
       const { productId, messageIds } = userStates[ctx.from.id];
       const product = await Product.findById(productId);
