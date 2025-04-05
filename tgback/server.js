@@ -60,8 +60,14 @@ app.post("/api/products", async (req, res) => {
   const { name, price, category, imageUrl, description } = req.body;
 
   try {
-    const product = new Product({ name, price, category, imageUrl });
-    await product.save();
+    const product = new Product({
+      name,
+      price,
+      category,
+      imageUrl,
+      description,
+    });
+    const newProduct = await product.save();
 
     // Fetch all subscribed users
     const users = await User.find();
@@ -74,15 +80,15 @@ app.post("/api/products", async (req, res) => {
       try {
         await axios.post(`${TELEGRAM_API}/sendPhoto`, {
           chat_id: user.userId,
-          photo: "https://via.placeholder.com/300.png",
-          caption: `New Product Added!\nName: ${name}\nPrice: $${price}\n${description}`,
+          photo: imageUrl || "https://via.placeholder.com/300.png",
+          caption: `💫 New Product💫 \nName: ${name}\nPrice: ${price} ETB\n${description}`,
           parse_mode: "Markdown",
           reply_markup: JSON.stringify({
             inline_keyboard: [
               [
                 {
-                  text: "View Product",
-                  url: `https://yourwebsite.com/product/${product._id}`,
+                  text: "🛒 Order Now",
+                  callback_data: `neworder_${newProduct._id}`, // This will trigger your add_ regex handler
                 },
               ],
             ],

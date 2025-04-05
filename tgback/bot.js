@@ -169,13 +169,13 @@ bot.action(/^prod_(.+)/, async (ctx) => {
 
     // Send product details and store message IDs
     const detailMsg = await ctx.replyWithPhoto(product.imageUrl, {
-      caption: `🛍️ ${product.name}\n💰 ${product.price} ETB`,
+      caption: `🛍️ ${product.name}\n💰 ${product.price} ETB\n ${product.description}`,
     });
     const optionsMsg = await ctx.reply(
       "Select an option:",
       Markup.inlineKeyboard([
         [
-          Markup.button.callback("🛒 Add to Cart", `add_${productId}`),
+          Markup.button.callback("🛒 Order Now", `add_${productId}`),
           Markup.button.callback(
             "🔙 Back to List",
             `back_to_products_${product.category}`
@@ -250,6 +250,33 @@ bot.action(/^add_(.+)/, async (ctx) => {
   try {
     const productId = ctx.match[1];
     await ctx.deleteMessage();
+    userStates[ctx.from.id] = {
+      productId,
+      action: "awaiting_phone",
+    };
+
+    // Ask for phone number
+    await ctx.reply(
+      "📱 Please send your phone number:",
+      Markup.keyboard([
+        [Markup.button.contactRequest("Share Contact")],
+        ["Cancel"],
+      ])
+        .resize()
+        .oneTime()
+    );
+
+    await ctx.answerCbQuery();
+  } catch (err) {
+    console.error(err);
+    await ctx.reply("⚠️ Error adding to cart");
+    await ctx.answerCbQuery();
+  }
+});
+// Handle Add to Cart
+bot.action(/^neworder_(.+)/, async (ctx) => {
+  try {
+    const productId = ctx.match[1];
     userStates[ctx.from.id] = {
       productId,
       action: "awaiting_phone",
