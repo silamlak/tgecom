@@ -3,10 +3,10 @@ node_modules
 node_modules/
 
 # Environment Variables
+.env
 .env/
 env/
 env
-.env
 
 # Logs
 logs/
