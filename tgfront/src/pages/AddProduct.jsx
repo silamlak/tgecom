@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 const API_URL = "http://localhost:3000/api"; // Adjust if deployed
-
-
+import MDEditor from "@uiw/react-md-editor";
 const AddProduct = () => {
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
@@ -29,11 +28,11 @@ const AddProduct = () => {
     try {
       await axios.post(`${API_URL}/products`, newProduct);
       alert("Product added successfully");
-      setName("");
-      setPrice("");
-      setCategory("");
-      setDescription("");
-      setImageUrl("");
+      // setName("");
+      // setPrice("");
+      // setCategory("");
+      // setDescription("");
+      // setImageUrl("");
     } catch (error) {
       console.error("Error adding product:", error);
     }
@@ -51,6 +50,22 @@ const AddProduct = () => {
           className="w-full p-2 border rounded"
           required
         />
+        <div>
+          <label
+            htmlFor="description"
+            className="block text-sm font-medium text-gray-700"
+          >
+            Description
+          </label>
+          <MDEditor
+            value={description}
+            onChange={(value) =>
+              setDescription(value || "")
+            }
+            className="mt-1"
+            preview="edit"
+          />
+        </div>
         <input
           type="number"
           placeholder="Price"
@@ -59,6 +74,7 @@ const AddProduct = () => {
           className="w-full p-2 border rounded"
           required
         />
+
         <select
           value={category}
           onChange={(e) => setCategory(e.target.value)}
@@ -66,18 +82,19 @@ const AddProduct = () => {
           required
         >
           <option value="">Select Category</option>
-          {categories && categories?.map((cat) => (
-            <option key={cat._id} value={cat._id}>
-              {cat.name}
-            </option>
-          ))}
+          {categories &&
+            categories?.map((cat) => (
+              <option key={cat._id} value={cat._id}>
+                {cat.name}
+              </option>
+            ))}
         </select>
-        <textarea
+        {/* <textarea
           placeholder="Description"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           className="w-full p-2 border rounded"
-        ></textarea>
+        ></textarea> */}
         <input
           type="text"
           placeholder="Image URL"

@@ -57,7 +57,7 @@ app.get("/api/product/:id", async (req, res) => {
 
 // Create a new product and notify subscribers
 app.post("/api/products", async (req, res) => {
-  const { name, price, category, imageUrl } = req.body;
+  const { name, price, category, imageUrl, description } = req.body;
 
   try {
     const product = new Product({ name, price, category, imageUrl });
@@ -66,14 +66,16 @@ app.post("/api/products", async (req, res) => {
     // Fetch all subscribed users
     const users = await User.find();
 
+    console.log(users)
+
     for (const user of users) {
-      console.log("Sending to chat_id:", user.chatId);
+      console.log("Sending to chat_id:", user.userId);
 
       try {
         await axios.post(`${TELEGRAM_API}/sendPhoto`, {
           chat_id: user.userId,
           photo: imageUrl || "https://via.placeholder.com/300.png",
-          caption: `New Product Added!\nName: ${name}\nPrice: $${price}`,
+          caption: `New Product Added!\nName: ${name}\nPrice: $${price}\n Description: ${description}`,
           parse_mode: "Markdown",
           reply_markup: JSON.stringify({
             inline_keyboard: [

@@ -1,156 +1,374 @@
 import { Telegraf, Markup } from "telegraf";
-import connectDB from "./db.js";
-import { config } from "dotenv";
-import User from "./model/userModel.js";
 import Category from "./model/categoryModel.js";
 import Product from "./model/productModel.js";
 import Order from "./model/orderModel.js";
+import connectDB from "./db.js";
+import { config } from "dotenv";
+import mongoose from "mongoose";
 
 config();
 
 const bot = new Telegraf(process.env.BOT);
-connectDB();
-const userState = {}; // To store categoryId and messageId
 
-bot.start(async (ctx) => {
-  const { id, first_name } = ctx.from;
-  await User.findOneAndUpdate(
-    { userId: id },
-    { firstName: first_name },
-    { upsert: true }
+connectDB();
+
+const userStates = {};
+
+const showMainMenu = (ctx, message = "Welcome Back") => {
+  return ctx.reply(
+    message,
+    Markup.keyboard([["Shop", "Order"]])
+      .resize()
+      .oneTime()
   );
-  await showCategories(ctx);
+};
+
+const showMainMenuNoMessage = (ctx) => {
+  return ctx.reply(
+    Markup.keyboard([["Shop", "Order"]])
+      .resize()
+      .oneTime()
+  );
+};
+
+const removeKeyboard = (ctx, message) => {
+  return ctx.reply(message, Markup.removeKeyboard());
+};
+
+// Command: /start -> Show main menu
+bot.start((ctx) => showMainMenu(ctx, "Welcome to our store!"));
+
+// Handle category selection
+bot.hears(["Shop"], async (ctx) => {
+  const categories = await Category.find();
+
+  if (!categories || categories.length === 0) {
+    return ctx.reply("No categories found.");
+  }
+
+  const buttons = categories.map((category) =>
+    Markup.button.callback(category.name, `category_${category._id}`)
+  );
+
+  ctx.reply(
+    `Choose a category`,
+    Markup.inlineKeyboard(buttons, { columns: 2 })
+  );
 });
 
-async function showCategories(ctx, edit = false, messageId = null) {
-  const categories = await Category.find();
-  const buttons = categories.map((c) =>
-    Markup.button.callback(c.name, `category_${c._id}`)
-  );
+let productListMessageId;
 
-  const keyboard = Markup.inlineKeyboard(buttons, { columns: 2 });
+bot.action(/^category_(.+)/, async (ctx) => {
+  try {
+    await ctx.deleteMessage();
 
-  if (edit && messageId) {
-    await ctx.telegram.editMessageText(
-      ctx.chat.id,
-      messageId,
-      null,
-      "Choose a category:",
-      keyboard
-    );
-  } else {
-    const { message_id } = await ctx.reply("Choose a category:", keyboard);
-    userState[ctx.from.id] = {
-      ...userState[ctx.from.id],
-      messageId: message_id,
-    };
-  }
-}
+    const categoryId = ctx.match[1];
+    const category = await Category.findById(categoryId);
 
-async function showProducts(ctx, categoryId, edit = false, messageId = null) {
-  const products = await Product.find({ category: categoryId });
-  const productButtons = products.map((p) =>
-    Markup.button.callback(`${p.name} ($${p.price})`, `product_${p._id}`)
-  );
+    if (!category) {
+      await ctx.reply("Category not found", Markup.removeKeyboard());
+      return ctx.answerCbQuery();
+    }
 
-  const keyboard = [
-    productButtons,
-    [Markup.button.callback("⬅️ Back", "back_to_categories")],
-  ];
+    const products = await Product.find({ category: categoryId });
 
-  if (edit && messageId) {
-    await ctx.telegram.editMessageText(
-      ctx.chat.id,
-      messageId,
-      null,
-      "Products:",
-      Markup.inlineKeyboard(keyboard)
-    );
-  } else {
+    if (!products.length) {
+      await ctx.reply("No products in this category", Markup.removeKeyboard());
+      return ctx.answerCbQuery();
+    }
+
+    // Store the message ID when sending product list header
     const { message_id } = await ctx.reply(
-      "Products:",
-      Markup.inlineKeyboard(keyboard)
+      `📦 Products in ${category.name}`,
+      Markup.removeKeyboard()
     );
-    userState[ctx.from.id] = { categoryId, messageId: message_id };
-  }
-}
+    productListMessageId = message_id;
 
-bot.action(/category_(\w+)/, async (ctx) => {
-  const categoryId = ctx.match[1];
-  const userId = ctx.from.id;
-  const messageId = userState[userId]?.messageId;
-  await showProducts(ctx, categoryId, !!messageId, messageId);
+    // Create product buttons with Back button
+    const productButtons = products.reduce((rows, product, index) => {
+      if (index % 2 === 0) rows.push([]);
+      rows[rows.length - 1].push(
+        Markup.button.callback(product.name, `prod_${product._id}`)
+      );
+      return rows;
+    }, []);
+
+    productButtons.push([
+      Markup.button.callback("« Back to Categories", "back_to_categories"),
+    ]);
+
+    await ctx.reply(
+      "Choose a product:",
+      Markup.inlineKeyboard(productButtons, { columns: 2 })
+    );
+
+    await ctx.answerCbQuery();
+  } catch (err) {
+    console.error("Error:", err);
+    await ctx.answerCbQuery("Error loading products");
+    await showMainMenuNoMessage(ctx);
+  }
 });
 
 bot.action("back_to_categories", async (ctx) => {
-  const userId = ctx.from.id;
-  const messageId = userState[userId]?.messageId;
-  delete userState[userId];
-  await showCategories(ctx, !!messageId, messageId);
-});
+  try {
+    await ctx.deleteMessage();
+    if (productListMessageId) {
+      await ctx.telegram.deleteMessage(ctx.chat.id, productListMessageId);
+    }
 
-bot.action("back_to_start", async (ctx) => {
-  delete userState[ctx.from.id];
-  await ctx.deleteMessage();
-  await ctx.reply("Main menu:", Markup.keyboard(["/start"]).resize());
-});
+    const categories = await Category.find();
 
-bot.action(/product_(\w+)/, async (ctx) => {
-  const productId = ctx.match[1];
-  const product = await Product.findById(productId);
+    if (!categories.length) {
+      await ctx.reply("No categories available", Markup.removeKeyboard());
+      return ctx.answerCbQuery();
+    }
+    await showMainMenu(ctx);
+    const buttons = categories.map((category) =>
+      Markup.button.callback(category.name, `category_${category._id}`)
+    );
 
-  if (!product) {
-    await ctx.reply("Product not found!");
-    return;
+    await ctx.reply(
+      "Categories",
+      Markup.inlineKeyboard(buttons, { columns: 2 })
+    );
+
+    await ctx.answerCbQuery();
+  } catch (err) {
+    console.error("Error:", err);
+    await ctx.answerCbQuery("Error going back");
+    await showMainMenuNoMessage(ctx);
   }
-
-  const image = product.imageUrl || "https://via.placeholder.com/150";
-  const caption = `You selected: ${product.name}\nPrice: $${product.price}\n\nPurchase or go back?`;
-
-  await ctx.replyWithPhoto(image, {
-    caption: caption,
-    reply_markup: Markup.inlineKeyboard([
-      Markup.button.callback("💳 Purchase", `purchase_${productId}`),
-    //   Markup.button.callback("⬅️ Back to Products", "back_to_products"),
-    //   Markup.button.callback("⬅️ Back to Categories", "back_to_categories"),
-    ]).reply_markup,
-  });
 });
 
-bot.action("back_to_products", async (ctx) => {
-  const userId = ctx.from.id;
-  const { categoryId, messageId } = userState[userId] || {};
-
-  if (!categoryId) {
-    await ctx.reply("Category not found. Please start over with /start.");
-    return;
+const deleteMessages = async (ctx, messageIds) => {
+  for (const id of messageIds) {
+    await ctx.telegram.deleteMessage(ctx.chat.id, id).catch(console.error);
   }
+};
 
-  // Send a new message instead of editing the photo
-  await showProducts(ctx, categoryId, false);
+bot.action(/^prod_(.+)/, async (ctx) => {
+  try {
+    const productId = ctx.match[1];
+    const product = await Product.findById(productId);
+    await ctx.deleteMessage()
+
+    // // Delete previous messages if any
+    // if (userStates[ctx.from.id]?.messageIds) {
+    //   await deleteMessages(ctx, userStates[ctx.from.id].messageIds);
+    // }
+
+    // Send product details and store message IDs
+    const detailMsg = await ctx.replyWithPhoto(product.imageUrl, {
+      caption: `🛍️ ${product.name}\n💰 ${product.price} ETB`,
+    });
+   const optionsMsg = await ctx.reply(
+     "Select an option:",
+     Markup.inlineKeyboard([
+       [
+         Markup.button.callback("🛒 Add to Cart", `add_${productId}`),
+         Markup.button.callback(
+           "🔙 Back to List",
+           `back_to_products_${product.category}`
+         ),
+       ],
+     ])
+   );
+
+    // Store all message references
+    userStates[ctx.from.id] = {
+      productId,
+      action: "viewing_product",
+      messageIds: [detailMsg.message_id, optionsMsg.message_id],
+    };
+
+    await ctx.answerCbQuery();
+  } catch (err) {
+    console.error(err);
+    await ctx.answerCbQuery("Error loading product");
+  }
 });
 
-bot.action(/purchase_(\w+)/, async (ctx) => {
-  const productId = ctx.match[1];
-  const product = await Product.findById(productId);
+// Simplified Back to Products Handler
+bot.action(/^back_to_products_(.+)/, async (ctx) => {
+  try {
+    await ctx.deleteMessage();
+    const categoryId = ctx.match[1];
+    const products = await Product.find({ category: categoryId });
 
-  if (!product) {
-    await ctx.reply("Product not found!");
-    return;
+    if (!products.length) {
+      await ctx.reply("This category is empty now");
+      return ctx.answerCbQuery();
+    }
+
+    // Create product list in 2 columns
+    const productButtons = [];
+    for (let i = 0; i < products.length; i += 2) {
+      const row = [];
+      if (products[i]) {
+        row.push(
+          Markup.button.callback(products[i].name, `prod_${products[i]._id}`)
+        );
+      }
+      if (products[i + 1]) {
+        row.push(
+          Markup.button.callback(
+            products[i + 1].name,
+            `prod_${products[i + 1]._id}`
+          )
+        );
+      }
+      productButtons.push(row);
+    }
+
+    // Add back button in its own row
+    productButtons.push([
+      Markup.button.callback("« Back to Categories", "back_to_categories"),
+    ]);
+
+    await ctx.reply("Select a product:", Markup.inlineKeyboard(productButtons));
+
+    await ctx.answerCbQuery();
+  } catch (err) {
+    console.error(err);
+    await ctx.reply("⚠️ Error loading products");
+    await ctx.answerCbQuery();
   }
+});
 
-  const order = new Order({
-    userId: ctx.from.id,
-    productId: product._id,
-    productName: product.name,
-    price: product.price,
-  });
+// Handle Add to Cart
+bot.action(/^add_(.+)/, async (ctx) => {
+  try {
+    const productId = ctx.match[1];
+    await ctx.deleteMessage();
+    userStates[ctx.from.id] = {
+      productId,
+      action: "awaiting_phone",
+    };
 
-  await order.save();
+    // Ask for phone number
+    await ctx.reply(
+      "📱 Please send your phone number:",
+      Markup.keyboard([
+        [Markup.button.contactRequest("Share Contact")],
+        ["Cancel"],
+      ])
+        .resize()
+        .oneTime()
+    );
 
-  await ctx.reply(
-    `Thank you for your purchase!\nProduct: ${product.name}\nPrice: $${product.price}\nYour order has been recorded.`
-  );
+    await ctx.answerCbQuery();
+  } catch (err) {
+    console.error(err);
+    await ctx.reply("⚠️ Error adding to cart");
+    await ctx.answerCbQuery();
+  }
+});
+
+// Helper function to delete previous messages
+const deletePreviousMessages = async (ctx, messageIds = []) => {
+  try {
+    await ctx.deleteMessage(); // Delete the current message
+    for (const messageId of messageIds) {
+      await ctx.telegram.deleteMessage(ctx.chat.id, messageId).catch(() => {});
+    }
+  } catch (err) {
+    console.error("Error deleting messages:", err);
+  }
+};
+
+// Updated order handler with message cleanup
+bot.hears(/^(\+251|0)(9|7)[0-9]{8}$/, async (ctx) => {
+  if (userStates[ctx.from.id]?.action === "awaiting_phone") {
+    try {
+
+      const phone = ctx.match[0];
+      const { productId, messageIds } = userStates[ctx.from.id]; // Store message IDs in state
+      const product = await Product.findById(productId);
+
+      if (!product) throw new Error("Product not found");
+
+      // Create order
+      await new Order({
+        userId: ctx.from.id,
+        productId,
+        phone,
+      }).save();
+
+      // Clean up previous messages
+      await deletePreviousMessages(ctx, messageIds);
+
+      // Send clean success message
+      await ctx.replyWithHTML(
+        `✅ <b>Order Confirmed!</b>\n\n` +
+          `🛍️ <b>Product:</b> ${product.name}\n` +
+          `💰 <b>Price:</b> ${product.price} ETB\n` +
+          `📱 <b>Phone:</b> ${phone}\n\n` +
+          `We'll contact you shortly. Thank you!`,
+        Markup.removeKeyboard()
+      );
+
+      delete userStates[ctx.from.id];
+    } catch (err) {
+      console.error(err);
+      await ctx.reply(
+        "⚠️ Error processing your order. Please try again.",
+        Markup.removeKeyboard()
+      );
+    }
+  }
+});
+
+// Updated contact handler
+bot.on("contact", async (ctx) => {
+  if (userStates[ctx.from.id]?.action === "awaiting_phone") {
+    try {
+
+      const phone = ctx.message.contact.phone_number;
+      const { productId, messageIds } = userStates[ctx.from.id];
+      const product = await Product.findById(productId);
+
+      if (!product) throw new Error("Product not found");
+
+      await new Order({
+        userId: ctx.from.id,
+        productId,
+        phone,
+      }).save();
+
+      await deletePreviousMessages(ctx, messageIds);
+
+      await ctx.replyWithHTML(
+        `✅ <b>Order Confirmed!</b>\n\n` +
+          `🛍️ <b>Product:</b> ${product.name}\n` +
+          `💰 <b>Price:</b> ${product.price} ETB\n` +
+          `📱 <b>Phone:</b> ${phone}\n\n` +
+          `We'll contact you shortly. Thank you!`,
+        Markup.removeKeyboard()
+      );
+
+      delete userStates[ctx.from.id];
+    } catch (err) {
+      console.error(err);
+      await ctx.reply(
+        "⚠️ Error processing your order. Please try again.",
+        Markup.removeKeyboard()
+      );
+    }
+  }
+});
+
+// Updated cancel handler
+bot.hears(["Cancel"], async (ctx) => {
+  if (userStates[ctx.from.id]?.action === "awaiting_phone") {
+    const { messageIds } = userStates[ctx.from.id];
+    await deletePreviousMessages(ctx, messageIds);
+    await ctx.reply(
+      "❌ Order canceled. You can shop again anytime!",
+      Markup.removeKeyboard()
+    );
+    delete userStates[ctx.from.id];
+  }
 });
 
 bot.launch();
