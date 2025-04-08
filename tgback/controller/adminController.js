@@ -58,6 +58,10 @@ export const getOrderDetail = async (req, res, next) => {
   }
 };
 
+function escapeMarkdown(text) {
+  return text.replace(/[_*[\]()~`>#+-=|{}.!]/g, "\\$&");
+}
+
 export const addProduct = async (req, res, next) => {
   const { name, price, category, description } = req.body;
   if (!req.files || req.files.length === 0) {
@@ -65,67 +69,110 @@ export const addProduct = async (req, res, next) => {
   }
 
   try {
-
     const imageUrls = [];
 
+    // Upload images to Cloudinary
     for (const file of req.files) {
       const b64 = Buffer.from(file.buffer).toString("base64");
       let dataURI = "data:" + file.mimetype + ";base64," + b64;
 
       const result = await cloudinary.uploader.upload(dataURI, {
-        folder: "products", // optional folder in Cloudinary
+        folder: "products",
         resource_type: "auto",
       });
 
+      // Validate the URL
+      if (!result.secure_url || !isValidUrl(result.secure_url)) {
+        throw new Error(
+          `Invalid Cloudinary URL generated for file: ${file.originalname}`
+        );
+      }
       imageUrls.push(result.secure_url);
     }
 
+    // Create product in database
     const product = new Product({
       name,
       price,
       category,
-      imageUrl: imageUrls, // This will be an array of URLs
+      imageUrl: imageUrls,
       description,
     });
 
     const newProduct = await product.save();
 
     if (imageUrls.length > 0) {
-      const mediaGroup = imageUrls.map((url, index) => ({
+      const users = await User.find({ userId: { $exists: true } }); // Only users with userId
+      const safeName = escapeMarkdown(name);
+      const safeDescription = escapeMarkdown(description);
+      // Prepare media group (first 10 images)
+      const mediaGroup = imageUrls.slice(0, 10).map((url, index) => ({
         type: "photo",
         media: url,
         caption:
           index === 0
-            ? `💫 New Product💫 \nName: ${name}\nPrice: ${price} ETB\n${description}`
+            ? `💫 New Product 💫\nName: ${safeName}\nPrice: ${price} ETB\n${safeDescription.substring(
+                0,
+                2000
+              )}`
             : undefined,
-        parse_mode: "Markdown",
+        parse_mode: "MarkdownV2",
       }));
 
-      const users = await User.find();
-
+      // Send to each user with error handling
       for (const user of users) {
-        console.log("Sending to chat_id:", user.userId);
+        try {
+          // Validate chat_id
+          if (!user.userId || isNaN(user.userId)) {
+            console.warn(`Invalid user ID for ${user._id}: ${user.userId}`);
+            continue;
+          }
 
-        await axios.post(`${TELEGRAM_API}/sendMediaGroup`, {
-          chat_id: user.userId,
-          media: mediaGroup,
-        });
+          console.log(`Processing user ${user.userId}`);
 
-        // Send buttons separately since media group can't have reply_markup
-        await axios.post(`${TELEGRAM_API}/sendMessage`, {
-          chat_id: user.userId,
-          text: "Order this product now!",
-          reply_markup: JSON.stringify({
-            inline_keyboard: [
-              [
-                {
-                  text: "🛒 Order Now",
-                  callback_data: `neworder_${newProduct._id}`,
-                },
-              ],
-            ],
-          }),
-        });
+          // Send media group
+          const mediaResponse = await axios
+            .post(`${TELEGRAM_API}/sendMediaGroup`, {
+              chat_id: user.userId,
+              media: mediaGroup,
+            })
+            .catch((err) => {
+              console.error(
+                `MediaGroup error for ${user.userId}:`,
+                err.response?.data || err.message
+              );
+              throw err;
+            });
+
+          // Send buttons message
+          await axios
+            .post(`${TELEGRAM_API}/sendMessage`, {
+              chat_id: user.userId,
+              text: "Order this product now!",
+              reply_markup: {
+                inline_keyboard: [
+                  [
+                    {
+                      text: "🛒 Order Now",
+                      callback_data: `neworder_${newProduct._id}`,
+                    },
+                  ],
+                ],
+              },
+            })
+            .catch((err) => {
+              console.error(
+                `Message error for ${user.userId}:`,
+                err.response?.data || err.message
+              );
+            });
+
+          // Small delay between users to avoid rate limiting
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        } catch (error) {
+          console.error(`Failed to notify user ${user.userId}:`, error.message);
+          continue; // Continue with next user
+        }
       }
     }
 
@@ -134,9 +181,20 @@ export const addProduct = async (req, res, next) => {
       product: newProduct,
     });
   } catch (error) {
+    console.error("Product creation error:", error);
     next(error);
   }
 };
+
+// Helper function to validate URLs
+function isValidUrl(url) {
+  try {
+    new URL(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export const processOrder = async (req, res, next) => {
   const { id } = req.params;

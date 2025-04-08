@@ -67,6 +67,10 @@ bot.hears(["Shop"], async (ctx) => {
 
 let productListMessageId;
 
+function escapeMarkdown(text) {
+  return text.replace(/[_*[\]()~`>#+-=|{}.!]/g, "\\$&");
+}
+
 bot.action(/^category_(.+)/, async (ctx) => {
   try {
     await ctx.deleteMessage();
@@ -162,21 +166,20 @@ bot.action(/^prod_(.+)/, async (ctx) => {
     const product = await Product.findById(productId);
     await ctx.deleteMessage();
 
-    // Check if product has multiple images
+    const safeName = escapeMarkdown(product.name);
+    const safeDescription = escapeMarkdown(product.description);
     const hasMultipleImages =
       Array.isArray(product.imageUrl) && product.imageUrl.length > 1;
 
     let detailMsg;
 
     if (hasMultipleImages) {
-      // Create media group with all images
       const mediaGroup = product.imageUrl.map((url, index) => ({
         type: "photo",
         media: url,
-        // Add caption only to the first photo
         caption:
           index === 0
-            ? `🛍️ ${product.name}\n💰 ${product.price} ETB\n${product.description}`
+            ? `🛍️ ${safeName}\n💰 ${product.price} ETB\n${safeDescription}`
             : undefined,
         parse_mode: "Markdown",
       }));
@@ -191,7 +194,7 @@ bot.action(/^prod_(.+)/, async (ctx) => {
       detailMsg = await ctx.replyWithPhoto(
         product.imageUrl[0] || product.imageUrl,
         {
-          caption: `🛍️ ${product.name}\n💰 ${product.price} ETB\n${product.description}`,
+          caption: `🛍️ ${safeName}\n💰 ${product.price} ETB\n${safeDescription}`,
           parse_mode: "Markdown",
         }
       );
@@ -229,7 +232,6 @@ bot.action(/^prod_(.+)/, async (ctx) => {
   }
 });
 
-// Simplified Back to Products Handler
 bot.action(/^back_to_products_(.+)/, async (ctx) => {
   try {
     await ctx.deleteMessage();
@@ -285,7 +287,9 @@ bot.action(/^add_(.+)/, async (ctx) => {
       productId,
     });
     if (orders.length > 0) {
-      await ctx.reply("You have an order pending. Please complete it first.");
+      await ctx.reply(
+        "You have an order pending for this product. Please complete it first."
+      );
       return ctx.answerCbQuery();
     }
     await ctx.deleteMessage();
@@ -322,7 +326,9 @@ bot.action(/^neworder_(.+)/, async (ctx) => {
       productId,
     });
     if (orders.length > 0) {
-      await ctx.reply("You have an order pending. Please complete it first.");
+      await ctx.reply(
+        "You have an order pending for this product. Please complete it first."
+      );
       return ctx.answerCbQuery();
     }
     // Initialize user state if it doesn't exist
