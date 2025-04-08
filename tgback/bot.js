@@ -162,15 +162,41 @@ bot.action(/^prod_(.+)/, async (ctx) => {
     const product = await Product.findById(productId);
     await ctx.deleteMessage();
 
-    // // Delete previous messages if any
-    // if (userStates[ctx.from.id]?.messageIds) {
-    //   await deleteMessages(ctx, userStates[ctx.from.id].messageIds);
-    // }
+    // Check if product has multiple images
+    const hasMultipleImages =
+      Array.isArray(product.imageUrl) && product.imageUrl.length > 1;
 
-    // Send product details and store message IDs
-    const detailMsg = await ctx.replyWithPhoto(product.imageUrl, {
-      caption: `🛍️ ${product.name}\n💰 ${product.price} ETB\n ${product.description}`,
-    });
+    let detailMsg;
+
+    if (hasMultipleImages) {
+      // Create media group with all images
+      const mediaGroup = product.imageUrl.map((url, index) => ({
+        type: "photo",
+        media: url,
+        // Add caption only to the first photo
+        caption:
+          index === 0
+            ? `🛍️ ${product.name}\n💰 ${product.price} ETB\n${product.description}`
+            : undefined,
+        parse_mode: "Markdown",
+      }));
+
+      // Send media group (album)
+      detailMsg = await ctx.replyWithMediaGroup(mediaGroup);
+
+      // Since media group returns an array of messages, we take the first one as reference
+      const firstMediaMessage = detailMsg[0];
+    } else {
+      // Fallback to single photo if only one image exists
+      detailMsg = await ctx.replyWithPhoto(
+        product.imageUrl[0] || product.imageUrl,
+        {
+          caption: `🛍️ ${product.name}\n💰 ${product.price} ETB\n${product.description}`,
+          parse_mode: "Markdown",
+        }
+      );
+    }
+
     const optionsMsg = await ctx.reply(
       "Select an option:",
       Markup.inlineKeyboard([
@@ -188,7 +214,12 @@ bot.action(/^prod_(.+)/, async (ctx) => {
     userStates[ctx.from.id] = {
       productId,
       action: "viewing_product",
-      messageIds: [detailMsg.message_id, optionsMsg.message_id],
+      messageIds: [
+        ...(hasMultipleImages
+          ? detailMsg.map((m) => m.message_id)
+          : [detailMsg.message_id]),
+        optionsMsg.message_id,
+      ],
     };
 
     await ctx.answerCbQuery();
@@ -301,7 +332,6 @@ bot.action(/^neworder_(.+)/, async (ctx) => {
   }
 });
 
-// Helper function to delete previous messages
 const deletePreviousMessages = async (ctx, messageIds = []) => {
   try {
     await ctx.deleteMessage(); // Delete the current message
@@ -313,7 +343,6 @@ const deletePreviousMessages = async (ctx, messageIds = []) => {
   }
 };
 
-// Updated order handler with message cleanup
 bot.hears(/^(\+251|0)(9|7)[0-9]{8}$/, async (ctx) => {
   if (userStates[ctx.from.id]?.action === "awaiting_phone") {
     try {
@@ -324,11 +353,13 @@ bot.hears(/^(\+251|0)(9|7)[0-9]{8}$/, async (ctx) => {
       if (!product) throw new Error("Product not found");
 
       // Create order
-      await new Order({
+      const newOrder = new Order({
         userId: ctx.from.id,
         productId,
         phone,
-      }).save();
+      });
+
+      await newOrder.save();
 
       // Clean up previous messages
       await deletePreviousMessages(ctx, messageIds);
@@ -354,7 +385,6 @@ bot.hears(/^(\+251|0)(9|7)[0-9]{8}$/, async (ctx) => {
   }
 });
 
-// Updated contact handler
 bot.on("contact", async (ctx) => {
   if (userStates[ctx.from.id]?.action === "awaiting_phone") {
     try {
@@ -364,33 +394,100 @@ bot.on("contact", async (ctx) => {
 
       if (!product) throw new Error("Product not found");
 
-      await new Order({
+      // Create temporary order (pre-payment)
+      const tempOrder = await new Order({
         userId: ctx.from.id,
         productId,
         phone,
+        status: "pending",
       }).save();
 
+      // Delete previous messages
       await deletePreviousMessages(ctx, messageIds);
 
-      await ctx.replyWithHTML(
-        `✅ <b>Order Confirmed!</b>\n\n` +
-          `🛍️ <b>Product:</b> ${product.name}\n` +
-          `💰 <b>Price:</b> ${product.price} ETB\n` +
-          `📱 <b>Phone:</b> ${phone}\n\n` +
-          `We'll contact you shortly. Thank you!`,
-        Markup.removeKeyboard()
-      );
+      // Send payment invoice
+      await ctx.replyWithInvoice({
+        title: `Purchase: ${product.name}`,
+        description: `${product.description.substring(0, 255)}...`,
+        payload: JSON.stringify({
+          orderId: tempOrder._id.toString(),
+          userId: ctx.from.id,
+        }),
+        provider_token: process.env.CHAPA_PROVIDER_TOKEN,
+        currency: "ETB",
+        prices: [
+          { label: "Product Price", amount: product.price * 100 },
+          { label: "Delivery Fee", amount: 5000 }, // 50 ETB in cents
+        ],
+        photo_url: product.imageUrl || "https://via.placeholder.com/300",
+        need_name: true,
+        need_phone_number: false, // Already collected
+        need_shipping_address: true,
+        is_flexible: true,
+      });
 
-      delete userStates[ctx.from.id];
+      // Update state
+      userStates[ctx.from.id] = {
+        ...userStates[ctx.from.id],
+        action: "awaiting_payment",
+      };
     } catch (err) {
       console.error(err);
       await ctx.reply(
         "⚠️ Error processing your order. Please try again.",
         Markup.removeKeyboard()
       );
+      delete userStates[ctx.from.id];
     }
   }
 });
+
+bot.on("pre_checkout_query", async (ctx) => {
+  try {
+    const payload = JSON.parse(ctx.preCheckoutQuery.invoice_payload);
+    const order = await Order.findById(payload.orderId);
+
+    if (!order || order.status !== "pending_payment") {
+      return ctx.answerPreCheckoutQuery(false, "Order no longer available");
+    }
+
+    await ctx.answerPreCheckoutQuery(true);
+  } catch (err) {
+    console.error(err);
+    await ctx.answerPreCheckoutQuery(false, "Payment error");
+  }
+});
+
+bot.on("successful_payment", async (ctx) => {
+  try {
+    console.log("paid well");
+  } catch (err) {
+    console.error(err);
+    await ctx.reply("⚠️ Error recording your payment. Contact support.");
+  }
+});
+
+// Helper function to delete previous messages
+async function deletePreviousMessages(ctx, messageIds) {
+  try {
+    for (const id of messageIds) {
+      await ctx.deleteMessage(id).catch(() => {});
+    }
+  } catch (err) {
+    console.error("Error deleting messages:", err);
+  }
+}
+
+// Helper function to notify admin
+async function notifyAdmin(order) {
+  await bot.telegram.sendMessage(
+    process.env.ADMIN_CHAT_ID,
+    `🛒 New Order #${order._id}\n\n` +
+      `Product: ${order.productId.name}\n` +
+      `User: ${order.userId}\n` +
+      `Amount: ${order.paymentDetails.telegramPayment.total_amount / 100} ETB`
+  );
+}
 
 // Updated cancel handler
 bot.hears(["Cancel"], async (ctx) => {

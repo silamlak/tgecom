@@ -7,7 +7,9 @@ import Product from "./model/productModel.js";
 import Order from "./model/orderModel.js";
 import User from "./model/userModel.js";
 import axios from "axios";
+import { v2 as cloudinary } from "cloudinary";
 import cors from 'cors'
+import adminRoute from './route/adminRoute.js'
 
 config();
 connectDB();
@@ -17,6 +19,8 @@ app.use(cors())
 app.use(express.json());
 
 const TELEGRAM_API = `https://api.telegram.org/bot${process.env.BOT}`;
+
+app.use('/api/admin', adminRoute)
 
 // Get all categories
 app.get("/api/categories", async (req, res) => {
@@ -70,37 +74,37 @@ app.post("/api/products", async (req, res) => {
     const newProduct = await product.save();
 
     // Fetch all subscribed users
-    const users = await User.find();
+    // const users = await User.find();
 
-    console.log(users)
+    // console.log(users)
 
-    for (const user of users) {
-      console.log("Sending to chat_id:", user.userId);
+    // for (const user of users) {
+    //   console.log("Sending to chat_id:", user.userId);
 
-      try {
-        await axios.post(`${TELEGRAM_API}/sendPhoto`, {
-          chat_id: user.userId,
-          photo: imageUrl || "https://via.placeholder.com/300.png",
-          caption: `💫 New Product💫 \nName: ${name}\nPrice: ${price} ETB\n${description}`,
-          parse_mode: "Markdown",
-          reply_markup: JSON.stringify({
-            inline_keyboard: [
-              [
-                {
-                  text: "🛒 Order Now",
-                  callback_data: `neworder_${newProduct._id}`, // This will trigger your add_ regex handler
-                },
-              ],
-            ],
-          }),
-        });
-      } catch (error) {
-        console.error(
-          `Failed to notify user ${user.chatId}:`,
-          error.response?.data || error.message
-        );
-      }
-    }
+    //   try {
+    //     await axios.post(`${TELEGRAM_API}/sendPhoto`, {
+    //       chat_id: user.userId,
+    //       photo: imageUrl || "https://via.placeholder.com/300.png",
+    //       caption: `💫 New Product💫 \nName: ${name}\nPrice: ${price} ETB\n${description}`,
+    //       parse_mode: "Markdown",
+    //       reply_markup: JSON.stringify({
+    //         inline_keyboard: [
+    //           [
+    //             {
+    //               text: "🛒 Order Now",
+    //               callback_data: `neworder_${newProduct._id}`, // This will trigger your add_ regex handler
+    //             },
+    //           ],
+    //         ],
+    //       }),
+    //     });
+    //   } catch (error) {
+    //     console.error(
+    //       `Failed to notify user ${user.chatId}:`,
+    //       error.response?.data || error.message
+    //     );
+    //   }
+    // }
 
     res
       .status(201)
@@ -136,6 +140,18 @@ app.post("/api/users", async (req, res) => {
     res.status(500).json({ error: "Failed to register user" });
   }
 });
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+cloudinary.api
+  .ping()
+  .then(() => console.log("Cloudinary connected successfully"))
+  .catch((err) => console.log("Cloudinary connection failed", { error: err }));
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

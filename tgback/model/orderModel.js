@@ -8,8 +8,12 @@ const orderSchema = new mongoose.Schema(
       ref: "Product",
       required: true,
     },
-    productName: String,
     phone: String,
+    status: {
+      type: String,
+      default: "pending",
+      enum: ["pending", "completed", "cancelled", "shipped"],
+    },
   },
   { timestamps: true }
 );
