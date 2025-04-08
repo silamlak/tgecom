@@ -160,6 +160,8 @@ const deleteMessages = async (ctx, messageIds) => {
   }
 };
 
+console.log('object')
+
 bot.action(/^prod_(.+)/, async (ctx) => {
   try {
     const productId = ctx.match[1];
