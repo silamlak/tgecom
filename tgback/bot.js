@@ -278,6 +278,15 @@ bot.action(/^back_to_products_(.+)/, async (ctx) => {
 
 bot.action(/^add_(.+)/, async (ctx) => {
   try {
+    const orders = await Order.find({
+      userId: ctx.from.id,
+      status: "pending",
+      productId,
+    });
+    if (orders.length > 0) {
+      await ctx.reply("You have an order pending. Please complete it first.");
+      return ctx.answerCbQuery();
+    }
     const productId = ctx.match[1];
     await ctx.deleteMessage();
     userStates[ctx.from.id] = {
@@ -307,7 +316,15 @@ bot.action(/^add_(.+)/, async (ctx) => {
 bot.action(/^neworder_(.+)/, async (ctx) => {
   try {
     const productId = ctx.match[1];
-
+    const orders = await Order.find({
+      userId: ctx.from.id,
+      status: "pending",
+      productId,
+    });
+    if (orders.length > 0) {
+      await ctx.reply("You have an order pending. Please complete it first.");
+      return ctx.answerCbQuery();
+    }
     // Initialize user state if it doesn't exist
     if (!userStates[ctx.from.id]) {
       userStates[ctx.from.id] = {};
@@ -320,7 +337,6 @@ bot.action(/^neworder_(.+)/, async (ctx) => {
       action: "awaiting_phone",
       createdAt: new Date(), // Add timestamp for state cleanup
     };
-
 
     // Ask for phone number
     await ctx.reply(
