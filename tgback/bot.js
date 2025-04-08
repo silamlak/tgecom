@@ -166,8 +166,8 @@ bot.action(/^prod_(.+)/, async (ctx) => {
     const product = await Product.findById(productId);
     await ctx.deleteMessage();
 
-    const safeName = escapeMarkdown(product.name);
-    const safeDescription = escapeMarkdown(product.description);
+    const safeName = removeMarkdownChars(product.name);
+    const safeDescription = removeMarkdownChars(product.description);
     const hasMultipleImages =
       Array.isArray(product.imageUrl) && product.imageUrl.length > 1;
 
