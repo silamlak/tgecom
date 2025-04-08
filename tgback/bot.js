@@ -276,7 +276,6 @@ bot.action(/^back_to_products_(.+)/, async (ctx) => {
   }
 });
 
-// Handle Add to Cart
 bot.action(/^add_(.+)/, async (ctx) => {
   try {
     const productId = ctx.match[1];
@@ -304,14 +303,24 @@ bot.action(/^add_(.+)/, async (ctx) => {
     await ctx.answerCbQuery();
   }
 });
-// Handle Add to Cart
+
 bot.action(/^neworder_(.+)/, async (ctx) => {
   try {
     const productId = ctx.match[1];
+
+    // Initialize user state if it doesn't exist
+    if (!userStates[ctx.from.id]) {
+      userStates[ctx.from.id] = {};
+    }
+
+    // Update user state for order process
     userStates[ctx.from.id] = {
+      ...userStates[ctx.from.id], // Preserve existing state if any
       productId,
       action: "awaiting_phone",
+      createdAt: new Date(), // Add timestamp for state cleanup
     };
+
 
     // Ask for phone number
     await ctx.reply(
@@ -405,32 +414,17 @@ bot.on("contact", async (ctx) => {
       // Delete previous messages
       await deletePreviousMessages(ctx, messageIds);
 
-      // Send payment invoice
-      await ctx.replyWithInvoice({
-        title: `Purchase: ${product.name}`,
-        description: `${product.description.substring(0, 255)}...`,
-        payload: JSON.stringify({
-          orderId: tempOrder._id.toString(),
-          userId: ctx.from.id,
-        }),
-        provider_token: process.env.CHAPA_PROVIDER_TOKEN,
-        currency: "ETB",
-        prices: [
-          { label: "Product Price", amount: product.price * 100 },
-          { label: "Delivery Fee", amount: 5000 }, // 50 ETB in cents
-        ],
-        photo_url: product.imageUrl || "https://via.placeholder.com/300",
-        need_name: true,
-        need_phone_number: false, // Already collected
-        need_shipping_address: true,
-        is_flexible: true,
-      });
+      // Send clean success message
+      await ctx.replyWithHTML(
+        `✅ <b>Order Confirmed!</b>\n\n` +
+          `🛍️ <b>Product:</b> ${product.name}\n` +
+          `💰 <b>Price:</b> ${product.price} ETB\n` +
+          `📱 <b>Phone:</b> ${phone}\n\n` +
+          `We'll contact you shortly. Thank you!`,
+        Markup.removeKeyboard()
+      );
 
-      // Update state
-      userStates[ctx.from.id] = {
-        ...userStates[ctx.from.id],
-        action: "awaiting_payment",
-      };
+      delete userStates[ctx.from.id];
     } catch (err) {
       console.error(err);
       await ctx.reply(
@@ -467,7 +461,6 @@ bot.on("successful_payment", async (ctx) => {
   }
 });
 
-// Helper function to notify admin
 async function notifyAdmin(order) {
   await bot.telegram.sendMessage(
     process.env.ADMIN_CHAT_ID,
@@ -478,7 +471,6 @@ async function notifyAdmin(order) {
   );
 }
 
-// Updated cancel handler
 bot.hears(["Cancel"], async (ctx) => {
   if (userStates[ctx.from.id]?.action === "awaiting_phone") {
     const { messageIds } = userStates[ctx.from.id];
