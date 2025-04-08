@@ -67,8 +67,8 @@ bot.hears(["Shop"], async (ctx) => {
 
 let productListMessageId;
 
-function escapeMarkdown(text) {
-  return text.replace(/[_*[\]()~`>#+-=|{}.!]/g, "\\$&");
+function removeMarkdownChars(text) {
+  return text.replace(/[_*[\]()~`>#+-=|{}.!]/g, "");
 }
 
 bot.action(/^category_(.+)/, async (ctx) => {
