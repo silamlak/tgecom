@@ -36,14 +36,42 @@ export const getOrders = async (req, res, next) => {
   }
 };
 
+// Get products by category ID
+export const products =  async (req, res) => {
+  try {
+    console.log(req.params.categoryId);
+    if(req.params.categoryId === "all"){
+      const products = await Product.find();
+      res.json(products);
+      return;
+    }
+    const products = await Product.find({ category: req.params.categoryId });
+    res.json(products);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch products" });
+  }
+};
+
+// Get all categories
+export const getCategory = async (req, res) => {
+  try {
+    const categories = await Category.find();
+    res.json(categories);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch categories" });
+  }
+};
+
 export const getOrderDetail = async (req, res, next) => {
   const { id } = req.params;
   try {
-    const orders = await Order.findById(id)
+    const order = await Order.findById(id)
       .populate("productId", "name price imageUrl") // Only populate specific fields
       .lean();
+       const orderOne = await Order.findById(id);
+      const userData = await User.findOne({ userId: orderOne.userId });
 
-    if (!orders) {
+    if (!order) {
       return res.status(404).json({
         success: false,
         message: "No orders found",
@@ -51,7 +79,8 @@ export const getOrderDetail = async (req, res, next) => {
     }
 
     res.status(200).json({
-      data: orders,
+      data: order,
+      user: userData,
     });
   } catch (error) {
     next(error);
@@ -103,15 +132,15 @@ export const addProduct = async (req, res, next) => {
 
     if (imageUrls.length > 0) {
       const users = await User.find({ userId: { $exists: true } }); // Only users with userId
-      const safeName = escapeMarkdown(name);
-      const safeDescription = escapeMarkdown(description);
+      // const safeName = escapeMarkdown(name);
+      // const safeDescription = escapeMarkdown(description);
       // Prepare media group (first 10 images)
       const mediaGroup = imageUrls.slice(0, 10).map((url, index) => ({
         type: "photo",
         media: url,
         caption:
           index === 0
-            ? `💫 New Product 💫\nName: ${safeName}\nPrice: ${price} ETB\n${safeDescription.substring(
+            ? `💫 New Product 💫\nName: ${name}\nPrice: ${price} ETB\n${description.substring(
                 0,
                 2000
               )}`
@@ -204,6 +233,7 @@ export const processOrder = async (req, res, next) => {
       "productId",
       "name price imageUrl"
     );
+    await Order.findByIdAndUpdate(orderId, { status: action });
     // console.log(order)
     await sendTelegramNotification(id, action, description, order, phone);
 
@@ -221,6 +251,38 @@ export const addCategory = async (req, res, next) => {
     res.status(201).json({
       message: "Category created successfully",
     });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const productDetail = async (req, res, next) => {
+  try {
+    const {id} = req.params
+    const product = await Product.findById(id)
+    res.status(201).json(product);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const productUpdate = async (req, res, next) => {
+  try {
+    const {id} = req.params
+    await Product.findByIdAndUpdate(id, { 
+      $set: {...req.body},
+    })
+    res.status(201).json({message: 'Product Updated Successfully'});
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const productDelete = async (req, res, next) => {
+  try {
+    const {id} = req.params
+    await Product.findByIdAndDelete(id)
+    res.status(201).json({message: 'Product Deleted Successfully'});
   } catch (err) {
     next(err);
   }

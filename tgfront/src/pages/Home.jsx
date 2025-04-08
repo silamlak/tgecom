@@ -1,137 +1,121 @@
-// src/components/Home.jsx
-import React, { useState, useEffect } from "react";
+import React from "react";
+import { useNavigate } from "react-router-dom";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import axios from "axios";
+import Navbar from "../component/Navbar";
+import { API_URL } from "../api";
 
-const API_URL = "http://localhost:3000/api";
+// const API_URL = "http://localhost:3000/api";
 
 const Home = () => {
-  const [categories, setCategories] = useState([]);
-  const [products, setProducts] = useState([]);
-  const [allProducts, setAllProducts] = useState([]); // Store all products initially
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [selectedProduct, setSelectedProduct] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const navigate = useNavigate();
+  const [selectedCategory, setSelectedCategory] = React.useState("all");
+  const [selectedProduct, setSelectedProduct] = React.useState(null);
 
-  // Fetch categories and all products on mount
-  useEffect(() => {
-    const fetchInitialData = async () => {
-      setLoading(true);
-      try {
-        // Fetch categories
-        const { data: catData } = await axios.get(`${API_URL}/categories`);
-        setCategories(catData);
+  // Fetch categories
+  const { data: categories = [], isLoading: categoriesLoading } = useQuery({
+    queryKey: ["categories"],
+    queryFn: async () => {
+      const { data } = await axios.get(`${API_URL}/categories`);
+      return data;
+    },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
 
-        // Fetch all products
-        const { data: prodData } = await axios.get(`${API_URL}/products/all`);
-        setAllProducts(prodData);
-        setProducts(prodData); // Display all products initially
-        setError(null);
-      } catch (err) {
-        setError("Failed to load data. Please try again.");
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchInitialData();
-  }, []);
+  // Fetch all products initially
+  const { data: allProducts = [], isLoading: productsLoading } = useQuery({
+    queryKey: ["products", "all"],
+    queryFn: async () => {
+      const { data } = await axios.get(`${API_URL}/products/all`);
+      return data;
+    },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
 
-  // Fetch products by category when selected
-  const fetchProductsByCategory = async (categoryId = 'all') => {
-    setLoading(true);
-    setSelectedCategory(categoryId || 'all');
-    setSelectedProduct(null); // Reset product view
-    try {
-      if (categoryId === null) {
-        // Show all products when no category is selected
-        setProducts(allProducts);
-      } else {
-        const { data } = await axios.get(`${API_URL}/products/${categoryId}`);
-        setProducts(data);
-      }
-      setError(null);
-    } catch (err) {
-      setError("Failed to load products. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Fetch products by category (refetch only when category changes)
+  const { data: filteredProducts = allProducts, refetch: refetchProducts } =
+    useQuery({
+      queryKey: ["products", selectedCategory],
+      queryFn: async () => {
+        if (selectedCategory === "all") return allProducts;
+        const { data } = await axios.get(
+          `${API_URL}/products/${selectedCategory}`
+        );
+        return data;
+      },
+      enabled: !!allProducts.length, // Only run after allProducts is loaded
+      staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    });
 
-  // Fetch product details when a product is selected
-  const fetchProduct = async (productId) => {
-    setLoading(true);
-    try {
-      const { data } = await axios.get(`${API_URL}/product/${productId}`);
-      setSelectedProduct(data);
-      setError(null);
-    } catch (err) {
-      setError("Failed to load product details. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Handle purchase (dummy user ID for web)
-  const handlePurchase = async (product) => {
-    const userId = "web_user_" + Math.random().toString(36).substr(2, 9);
-    try {
+  // Mutation for purchasing a product
+  const purchaseMutation = useMutation({
+    mutationFn: async (product) => {
+      const userId = "web_user_" + Math.random().toString(36).substr(2, 9);
       await axios.post(`${API_URL}/orders`, {
         userId,
         productId: product._id,
         productName: product.name,
         price: product.price,
       });
+    },
+    onSuccess: (_, product) => {
       alert(`Purchased ${product.name} for $${product.price}!`);
-    } catch (err) {
-      setError("Failed to process purchase. Please try again.");
-    }
+    },
+    onError: () => "Failed to process purchase. Please try again.",
+  });
+
+  // Handle category selection
+  const handleCategoryChange = (categoryId) => {
+    setSelectedCategory(categoryId || "all");
+    setSelectedProduct(null);
+    refetchProducts();
   };
 
+  // Handle product selection
+  const handleProductSelect = (id) => {
+    // setSelectedProduct(product);
+    navigate(`/product/${id}`);
+  };
+
+  if (categoriesLoading || productsLoading) {
+    return (
+      <div className="flex justify-center items-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-indigo-600"></div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-md py-6">
-        <h1 className="text-4xl font-extrabold text-center text-gray-900">
-          ShopSphere
-        </h1>
-        <p className="text-center text-gray-500 mt-2">
-          Your one-stop shop for everything!
-        </p>
-      </header>
+    <div className="min-h-screen bg-gray-100">
 
-      <main className="container mx-auto p-6">
-        {loading && (
-          <div className="text-center text-lg text-gray-600 animate-pulse">
-            Loading...
-          </div>
-        )}
-        {error && (
-          <div className="text-center text-red-600 bg-red-100 p-3 rounded-md mb-6">
-            {error}
+      <main className="container mx-auto px-4 py-8">
+        {/* Error Display */}
+        {purchaseMutation.isError && (
+          <div className="mb-6 p-4 bg-red-100 text-red-700 rounded-lg text-center">
+            {purchaseMutation.error}
           </div>
         )}
 
-        {/* Categories */}
         {!selectedProduct && (
           <div className="mb-8">
-            <div className="flex flex-wrap justify-center gap-3">
+            <div className="flex flex-wrap justify-center gap-4">
               <button
-                onClick={() => fetchProductsByCategory(null)}
-                className={`px-5 py-2 rounded-full font-medium transition-all duration-300 ${
-                  selectedCategory === 'all'
-                    ? "bg-indigo-600 text-white shadow-lg"
+                onClick={() => handleCategoryChange("all")}
+                className={`px-6 py-2 rounded-full font-semibold transition-all duration-200 ${
+                  selectedCategory === "all"
+                    ? "bg-indigo-600 text-white shadow-md"
                     : "bg-gray-200 text-gray-700 hover:bg-indigo-500 hover:text-white"
                 }`}
               >
                 All Products
               </button>
-              {categories.map((cat) => (
+              {categories?.map((cat) => (
                 <button
                   key={cat._id}
-                  onClick={() => fetchProductsByCategory(cat._id)}
-                  className={`px-5 py-2 rounded-full font-medium transition-all duration-300 ${
+                  onClick={() => handleCategoryChange(cat._id)}
+                  className={`px-6 py-2 rounded-full font-semibold transition-all duration-200 ${
                     selectedCategory === cat._id
-                      ? "bg-indigo-600 text-white shadow-lg"
+                      ? "bg-indigo-600 text-white shadow-md"
                       : "bg-gray-200 text-gray-700 hover:bg-indigo-500 hover:text-white"
                   }`}
                 >
@@ -142,17 +126,19 @@ const Home = () => {
           </div>
         )}
 
-        {/* Products */}
         {!selectedProduct && (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {products.map((prod) => (
+            {filteredProducts.map((prod) => (
               <div
                 key={prod._id}
-                onClick={() => fetchProduct(prod._id)}
-                className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition-all duration-300 cursor-pointer"
+                className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-xl transition-shadow duration-300"
               >
                 <img
-                  src={prod.imageUrl || "https://via.placeholder.com/150"}
+                  src={
+                    prod.imageUrl[0] ||
+                    prod.imageUrl[0] ||
+                   "https://via.placeholder.com/150"
+                  }
                   alt={prod.name}
                   className="w-full h-48 object-cover"
                 />
@@ -160,8 +146,11 @@ const Home = () => {
                   <h3 className="text-lg font-semibold text-gray-800 truncate">
                     {prod.name}
                   </h3>
-                  <p className="text-gray-600 text-sm mt-1">${prod.price}</p>
-                  <button className="mt-3 w-full bg-indigo-500 text-white py-2 rounded-md hover:bg-indigo-600 transition-colors">
+                  <p className="text-gray-600 text-sm mt-1">ETB {prod.price}</p>
+                  <button
+                    onClick={() => handleProductSelect(prod._id)}
+                    className="mt-4 w-full bg-indigo-600 text-white py-2 rounded-md hover:bg-indigo-700 transition-colors duration-200"
+                  >
                     View Details
                   </button>
                 </div>
@@ -169,44 +158,13 @@ const Home = () => {
             ))}
           </div>
         )}
-
-        {/* Product Details */}
-        {selectedProduct && (
-          <div className="max-w-2xl mx-auto bg-white rounded-xl shadow-md p-6">
-            <img
-              src={
-                selectedProduct.imageUrl || "https://via.placeholder.com/150"
-              }
-              alt={selectedProduct.name}
-              className="w-full h-72 object-cover rounded-lg mb-6"
-            />
-            <h3 className="text-2xl font-bold text-gray-800 mb-2">
-              {selectedProduct.name}
-            </h3>
-            <p className="text-gray-600 text-lg mb-4">
-              ${selectedProduct.price}
-            </p>
-            <p className="text-gray-500 mb-6">
-              Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do
-              eiusmod tempor incididunt ut labore et dolore magna aliqua.
-            </p>
-            <div className="flex gap-4 justify-center">
-              <button
-                onClick={() => fetchProductsByCategory(selectedCategory)}
-                className="px-6 py-3 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors font-medium"
-              >
-                Back to Products
-              </button>
-            </div>
-          </div>
-        )}
       </main>
 
       {/* Footer */}
-      <footer className="bg-gray-800 text-white py-4 mt-12">
-        <p className="text-center">
-          &copy; 2025 ShopSphere. All rights reserved.
-        </p>
+      <footer className="bg-gray-900 text-white py-6">
+        <div className="container mx-auto px-4 text-center">
+          <p>© {new Date().getFullYear()} ShopSphere. All rights reserved.</p>
+        </div>
       </footer>
     </div>
   );

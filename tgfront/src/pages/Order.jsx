@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useEffect } from "react";
 import axios from "axios";
 import { Link } from "react-router-dom";
+import { API_URL } from "../api";
 
-const API_URL = "http://localhost:3000/api/admin";
+// const API_URL = "http://localhost:3000/api/admin";
 
 const OrdersTable = ({ orders = [] }) => {
   const [orderData, setOrderData] = useState([]);

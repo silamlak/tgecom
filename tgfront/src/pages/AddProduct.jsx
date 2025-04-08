@@ -2,8 +2,9 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import MDEditor from "@uiw/react-md-editor";
+import { API_URL } from "../api";
 
-const API_URL = "http://localhost:3000/api";
+// const API_URL = "http://localhost:3000/api";
 
 const AddProduct = () => {
   const [name, setName] = useState("");
@@ -30,7 +31,7 @@ const AddProduct = () => {
   // Add product mutation
   const addProductMutation = useMutation({
     mutationFn: async (formData) => {
-      const response = await axios.post(`${API_URL}/admin/products`, formData, {
+      const response = await axios.post(`${API_URL}/products`, formData, {
         headers: {
           "Content-Type": "multipart/form-data",
         },

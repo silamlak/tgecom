@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
+import { API_URL } from "../api";
 
-const API_URL = "http://localhost:3000/api";
+// const API_URL = "http://localhost:3000/api";
 
 const AddCategory = () => {
   const [name, setName] = useState("");
@@ -13,7 +14,7 @@ const AddCategory = () => {
   const addCategoryMutation = useMutation({
     mutationFn: async (categoryData) => {
       const response = await axios.post(
-        `${API_URL}/admin/category`,
+        `${API_URL}/category`,
         categoryData
       );
       return response.data;

@@ -22,32 +22,6 @@ const TELEGRAM_API = `https://api.telegram.org/bot${process.env.BOT}`;
 
 app.use('/api/admin', adminRoute)
 
-// Get all categories
-app.get("/api/categories", async (req, res) => {
-  try {
-    const categories = await Category.find();
-    res.json(categories);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch categories" });
-  }
-});
-
-// Get products by category ID
-app.get("/api/products/:categoryId", async (req, res) => {
-  try {
-    console.log(req.params.categoryId);
-    if(req.params.categoryId === "all"){
-      const products = await Product.find();
-      res.json(products);
-      return;
-    }
-    const products = await Product.find({ category: req.params.categoryId });
-    res.json(products);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch products" });
-  }
-});
-
 // Get product by ID
 app.get("/api/product/:id", async (req, res) => {
   try {
