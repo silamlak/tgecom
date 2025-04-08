@@ -1,1 +1,1 @@
-export const API_URL = "tgcom.up.railway.app/api/admin";
+export const API_URL = "https://tgcom.up.railway.app/api/admin";
