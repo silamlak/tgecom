@@ -467,17 +467,6 @@ bot.on("successful_payment", async (ctx) => {
   }
 });
 
-// Helper function to delete previous messages
-async function deletePreviousMessages(ctx, messageIds) {
-  try {
-    for (const id of messageIds) {
-      await ctx.deleteMessage(id).catch(() => {});
-    }
-  } catch (err) {
-    console.error("Error deleting messages:", err);
-  }
-}
-
 // Helper function to notify admin
 async function notifyAdmin(order) {
   await bot.telegram.sendMessage(
