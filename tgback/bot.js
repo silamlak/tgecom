@@ -278,6 +278,7 @@ bot.action(/^back_to_products_(.+)/, async (ctx) => {
 
 bot.action(/^add_(.+)/, async (ctx) => {
   try {
+    const productId = ctx.match[1];
     const orders = await Order.find({
       userId: ctx.from.id,
       status: "pending",
@@ -287,7 +288,6 @@ bot.action(/^add_(.+)/, async (ctx) => {
       await ctx.reply("You have an order pending. Please complete it first.");
       return ctx.answerCbQuery();
     }
-    const productId = ctx.match[1];
     await ctx.deleteMessage();
     userStates[ctx.from.id] = {
       productId,
