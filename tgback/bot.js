@@ -67,9 +67,9 @@ bot.hears(["Shop"], async (ctx) => {
 
 let productListMessageId;
 
-function removeMarkdownChars(text) {
-  return text.replace(/[_*[\]()~`>#+-=|{}.!]/g, "");
-}
+// function removeMarkdownChars(text) {
+//   return text.replace(/[_*[\]()~`>#+-=|{}.!]/g, "");
+// }
 
 bot.action(/^category_(.+)/, async (ctx) => {
   try {
@@ -154,22 +154,14 @@ bot.action("back_to_categories", async (ctx) => {
   }
 });
 
-const deleteMessages = async (ctx, messageIds) => {
-  for (const id of messageIds) {
-    await ctx.telegram.deleteMessage(ctx.chat.id, id).catch(console.error);
-  }
-};
-
-console.log('object')
-
 bot.action(/^prod_(.+)/, async (ctx) => {
   try {
     const productId = ctx.match[1];
     const product = await Product.findById(productId);
     await ctx.deleteMessage();
 
-    const safeName = removeMarkdownChars(product.name);
-    const safeDescription = removeMarkdownChars(product.description);
+    // const safeName = removeMarkdownChars(product.name);
+    // const safeDescription = removeMarkdownChars(product.description);
     const hasMultipleImages =
       Array.isArray(product.imageUrl) && product.imageUrl.length > 1;
 
@@ -181,7 +173,7 @@ bot.action(/^prod_(.+)/, async (ctx) => {
         media: url,
         caption:
           index === 0
-            ? `🛍️ ${safeName}\n💰 ${product.price} ETB\n${safeDescription}`
+            ? `🛍️ ${product.name}\n💰 ${product.price} ETB\n${product.description}`
             : undefined,
         parse_mode: "Markdown",
       }));
@@ -196,7 +188,7 @@ bot.action(/^prod_(.+)/, async (ctx) => {
       detailMsg = await ctx.replyWithPhoto(
         product.imageUrl[0] || product.imageUrl,
         {
-          caption: `🛍️ ${safeName}\n💰 ${product.price} ETB\n${safeDescription}`,
+          caption: `🛍️ ${product.name}\n💰 ${product.price} ETB\n${product.description}`,
           parse_mode: "Markdown",
         }
       );
