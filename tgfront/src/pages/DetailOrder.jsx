@@ -191,7 +191,7 @@ const OrderDetail = () => {
             <div className="mt-6 flex flex-col sm:flex-row justify-end gap-4">
               {/* Always show Back to Orders */}
               <button
-                onClick={() => navigate("/orders")}
+                onClick={() => navigate("/order")}
                 className="px-4 py-2 bg-gray-100 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-200 transition-all focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
                 disabled={processOrderMutation.isPending}
               >
